@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Queue — Login</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/login.css">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        // If already logged in, redirect immediately
+        const _tok = sessionStorage.getItem('token');
+        const _role = sessionStorage.getItem('user_role');
+        if (_tok) {
+            window.location.href = _role === 'admin' ? '/admin.html' : '/user.html';
+        }
+    </script>
+</head>
+<body class="login-body">
+
+<div class="login-wrapper">
+    <!-- Branding Panel -->
+    <div class="login-brand">
+        <div class="brand-content">
+            <div class="brand-icon">🏥</div>
+            <h1>Smart Queue</h1>
+            <p>Intelligent Queue Management System</p>
+            <div class="brand-features">
+                <div class="feature-item">⚡ Real-time Updates</div>
+                <div class="feature-item">🔒 Secure Sessions</div>
+                <div class="feature-item">📊 Live Analytics</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Panel -->
+    <div class="login-form-panel">
+        <!-- Role Selector -->
+        <div id="portal-section">
+            <h2>Welcome Back</h2>
+            <p class="subtitle">Select your portal to continue</p>
+            <div class="portal-cards">
+                <div class="portal-card" id="user-portal-card" onclick="selectPortal('user')">
+                    <span class="portal-icon">👤</span>
+                    <strong>User Portal</strong>
+                    <p>Join queues & track wait times</p>
+                </div>
+                <div class="portal-card" id="admin-portal-card" onclick="selectPortal('admin')">
+                    <span class="portal-icon">🛠️</span>
+                    <strong>Admin Portal</strong>
+                    <p>Manage queues & patients</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Login Section -->
+        <div id="login-section" class="hidden">
+            <button class="back-btn" onclick="backToPortal()">← Back</button>
+            <h2 id="login-title">User Login</h2>
+            <p class="subtitle" id="login-subtitle">Login to your user account</p>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" placeholder="Enter username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="Enter password" required>
+                </div>
+                <p id="login-error" class="error-msg hidden"></p>
+                <button type="submit" class="btn-primary" id="login-btn">Login</button>
+            </form>
+            <p class="switch-link">Don't have an account? <a href="#" onclick="showRegister()">Register</a></p>
+        </div>
+
+        <!-- Register Section -->
+        <div id="register-section" class="hidden">
+            <button class="back-btn" onclick="showLogin()">← Back to Login</button>
+            <h2 id="reg-title">User Registration</h2>
+            <p class="subtitle">Create your account</p>
+
+            <form id="register-form">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="reg-username" placeholder="Choose a username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="reg-password" placeholder="Choose a password" required>
+                </div>
+                <input type="hidden" id="reg-role" value="user">
+                <p id="reg-error" class="error-msg hidden"></p>
+                <p id="reg-success" class="success-msg hidden"></p>
+                <button type="submit" class="btn-primary">Create Account</button>
+            </form>
+            <p class="switch-link">Already have an account? <a href="#" onclick="showLogin()">Login</a></p>
+        </div>
+    </div>
+</div>
+
+<script src="js/common.js"></script>
+<script>
+    let currentPortal = 'user';
+
+    function selectPortal(type) {
+        currentPortal = type;
+        document.getElementById('portal-section').classList.add('hidden');
+        document.getElementById('login-section').classList.remove('hidden');
+        document.getElementById('login-title').textContent = type === 'admin' ? 'Admin Login' : 'User Login';
+        document.getElementById('login-subtitle').textContent = `Login to your ${type} account`;
+        document.getElementById('reg-title').textContent = type === 'admin' ? 'Admin Registration' : 'User Registration';
+        document.getElementById('reg-role').value = type;
+        // Highlight portal card
+        document.querySelectorAll('.portal-card').forEach(c => c.classList.remove('active'));
+        document.getElementById(`${type}-portal-card`).classList.add('active');
+    }
+
+    function backToPortal() {
+        document.getElementById('portal-section').classList.remove('hidden');
+        document.getElementById('login-section').classList.add('hidden');
+        document.getElementById('register-section').classList.add('hidden');
+    }
+
+    function showRegister() {
+        document.getElementById('login-section').classList.add('hidden');
+        document.getElementById('register-section').classList.remove('hidden');
+    }
+
+    function showLogin() {
+        document.getElementById('register-section').classList.add('hidden');
+        document.getElementById('login-section').classList.remove('hidden');
+    }
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value;
+        const errEl = document.getElementById('login-error');
+        const btn = document.getElementById('login-btn');
+
+        btn.textContent = 'Logging in...';
+        btn.disabled = true;
+        errEl.classList.add('hidden');
+
+        try {
+            const res = await axios.post(`${API_URL}/auth/login`, { username, password, role: currentPortal });
+
+            if (res.data.user.role !== currentPortal) {
+                errEl.textContent = `This is the ${currentPortal.toUpperCase()} portal. Your account is a ${res.data.user.role.toUpperCase()} account.`;
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            // Store in THIS tab's sessionStorage only
+            sessionStorage.setItem('token', res.data.token);
+            sessionStorage.setItem('user_role', res.data.user.role);
+            sessionStorage.setItem('username', res.data.user.username);
+
+            // Redirect to the right page
+            window.location.href = res.data.user.role === 'admin' ? '/admin.html' : '/user.html';
+        } catch (err) {
+            errEl.textContent = err.response?.data?.error || 'Login failed. Please try again.';
+            errEl.classList.remove('hidden');
+        } finally {
+            btn.textContent = 'Login';
+            btn.disabled = false;
+        }
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('reg-username').value.trim();
+        const password = document.getElementById('reg-password').value;
+        const role = document.getElementById('reg-role').value;
+        const errEl = document.getElementById('reg-error');
+        const sucEl = document.getElementById('reg-success');
+
+        errEl.classList.add('hidden');
+        sucEl.classList.add('hidden');
+
+        try {
+            await axios.post(`${API_URL}/auth/register`, { username, password, role });
+            sucEl.textContent = '✅ Account created! You can now login.';
+            sucEl.classList.remove('hidden');
+            setTimeout(showLogin, 1500);
+        } catch (err) {
+            errEl.textContent = err.response?.data?.error || 'Registration failed.';
+            errEl.classList.remove('hidden');
+        }
+    });
+</script>
+</body>
+</html>

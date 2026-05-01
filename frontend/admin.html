@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Queue — Admin Panel</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="js/common.js"></script>
+    <script>requireAdmin();</script>
+</head>
+<body>
+
+<nav id="navbar">
+    <div class="nav-brand">🛠️ Admin Panel (<span id="nav-username"></span>)</div>
+    <div class="nav-links">
+        <button class="nav-btn active" id="btn-queues" onclick="showTab('queues')">📋 Queues</button>
+        <button class="nav-btn" id="btn-transfers" onclick="showTab('transfers')">🔄 Transfers</button>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+</nav>
+
+<div class="page-content">
+    <!-- Queues Tab -->
+    <div id="tab-queues" class="tab-panel">
+        <div class="page-header">
+            <h2>Queue Management</h2>
+            <p class="page-subtitle">Create and manage all active queues</p>
+        </div>
+
+        <div class="admin-grid">
+            <!-- Create Queue -->
+            <div class="card">
+                <h3>➕ Create New Queue</h3>
+                <form id="create-queue-form">
+                    <div class="form-group">
+                        <label>Queue Name</label>
+                        <input type="text" id="new-queue-name" placeholder="e.g. Hospital OPD" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Avg. Service Time (minutes)</label>
+                        <input type="number" id="new-queue-time" value="5" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Total Capacity</label>
+                        <input type="number" id="new-queue-capacity" value="20" min="1" required>
+                    </div>
+                    <button type="submit" class="btn-primary">Create Queue</button>
+                </form>
+            </div>
+
+            <!-- Queue List -->
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h3 style="margin:0;">Active Queues</h3>
+                    <button class="btn-refresh" onclick="loadAdminQueues()">🔄 Refresh</button>
+                </div>
+                <div id="admin-queues-container"><div class="loading">Loading queues...</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transfers Tab -->
+    <div id="tab-transfers" class="tab-panel hidden">
+        <div class="page-header">
+            <h2>Pending Transfers</h2>
+            <p class="page-subtitle">Approve or reject user token transfer requests</p>
+        </div>
+        <button class="btn-refresh" onclick="loadPendingTransfers()">🔄 Refresh</button>
+        <div id="admin-transfers-container" style="margin-top:20px;"><div class="loading">Loading...</div></div>
+
+        <div style="margin-top:40px;">
+            <h3 style="border-bottom: 2px solid #e1e8ed; padding-bottom: 10px; margin-bottom: 20px;">📜 Transfer History</h3>
+            <div id="transfer-history-container"><div class="loading">Loading history...</div></div>
+        </div>
+
+        <div style="margin-top:40px; background:#f8f9ff; border-radius:12px; padding:24px; border:2px solid #dce3f5;">
+            <h3 style="margin-bottom:6px;">♻️ Reassign Cancelled Token</h3>
+            <p style="color:#666; font-size:0.9em; margin-bottom:16px;">Give a previously cancelled (transferred) token number back to a new patient.</p>
+            <div class="form-row">
+                <input type="number" id="reassign-queue-id" placeholder="Queue ID" style="width:15%;">
+                <input type="number" id="reassign-token-number" placeholder="Token No. (e.g. 1)" style="width:18%;">
+                <input type="text" id="reassign-username" placeholder="New patient username" style="width:30%;">
+                <select id="reassign-role" style="width:15%; padding:12px 10px; border:2px solid #e1e8ed; border-radius:8px;">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                </select>
+                <button onclick="reassignToken()" style="width:16%; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:600;">♻️ Reassign</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let socket;
+
+setNavUsername();
+
+// Init socket for live updates
+function initSocket() {
+    socket = io('http://localhost:5000');
+    socket.on('global_queue_update', () => {
+        if (!document.getElementById('tab-queues').classList.contains('hidden')) loadAdminQueues();
+    });
+}
+initSocket();
+
+function showTab(name) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`tab-${name}`).classList.remove('hidden');
+    document.getElementById(`btn-${name}`).classList.add('active');
+    if (name === 'queues') loadAdminQueues();
+    if (name === 'transfers') loadPendingTransfers();
+}
+
+// ── Create Queue ────────────────────────────────────────────
+document.getElementById('create-queue-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('new-queue-name').value.trim();
+    const avgTime = parseInt(document.getElementById('new-queue-time').value);
+    const capacity = parseInt(document.getElementById('new-queue-capacity').value);
+    try {
+        await axios.post(`${API_URL}/admin/queues`, { name, average_service_time: avgTime, capacity });
+        showToast(`✅ Queue "${name}" created!`, 'success');
+        document.getElementById('create-queue-form').reset();
+        document.getElementById('new-queue-time').value = 5;
+        document.getElementById('new-queue-capacity').value = 20;
+        loadAdminQueues();
+    } catch (err) {
+        showToast(err.response?.data?.error || 'Queue creation failed', 'error');
+    }
+});
+
+// ── Admin Queue List ────────────────────────────────────────
+async function loadAdminQueues() {
+    try {
+        const res = await axios.get(`${API_URL}/queue/`);
+        const container = document.getElementById('admin-queues-container');
+        if (res.data.length === 0) {
+            container.innerHTML = '<div class="empty-state">No queues yet. Create one!</div>';
+            return;
+        }
+        container.innerHTML = res.data.map(q => {
+            const pct = Math.round((q.total_issued / q.capacity) * 100);
+            return `
+            <div class="admin-queue-card card">
+                <div class="queue-card-header">
+                    <h3>${q.queue_name}</h3>
+                    <span class="queue-meta">${q.total_issued}/${q.capacity} issued</span>
+                </div>
+                <div class="queue-stats-row">
+                    <div class="stat"><span class="stat-val" style="color:#e74c3c">${q.waiting_count}</span><span class="stat-label">Waiting</span></div>
+                    <div class="stat"><span class="stat-val" style="color:#27ae60">${q.serving_token || '—'}</span><span class="stat-label">Serving</span></div>
+                    <div class="stat"><span class="stat-val">${q.estimated_wait_time} min</span><span class="stat-label">Est. Wait</span></div>
+                </div>
+                <div class="progress-bar-wrap">
+                    <div class="progress-bar" style="width:${pct}%; background:${pct > 80 ? '#e74c3c' : '#27ae60'}"></div>
+                </div>
+                <div class="admin-btn-row">
+                    <button class="btn-action bg-blue" onclick="callNextToken(${q.queue_id})">📢 Call Next</button>
+                    <button class="btn-action bg-purple" onclick="viewTokens(${q.queue_id})">📋 View List</button>
+                    <button class="btn-action bg-orange" onclick="resetQueue(${q.queue_id})">🔄 Reset</button>
+                    <button class="btn-action bg-red" onclick="deleteQueue(${q.queue_id})">🗑️ Delete</button>
+                </div>
+                <div id="tokens-list-${q.queue_id}" class="tokens-list hidden"></div>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        console.error('Error loading admin queues', err);
+    }
+}
+
+async function callNextToken(queueId) {
+    try {
+        const res = await axios.post(`${API_URL}/admin/queues/${queueId}/next`);
+        showToast(res.data.message, 'success');
+        loadAdminQueues();
+    } catch (err) { showToast(err.response?.data?.error || 'Failed', 'error'); }
+}
+
+
+
+async function resetQueue(queueId) {
+    if (!confirm('Reset this queue? All tokens will be deleted.')) return;
+    try {
+        await axios.post(`${API_URL}/admin/queues/${queueId}/reset`);
+        showToast('Queue reset!', 'success');
+        loadAdminQueues();
+    } catch (err) { showToast('Reset failed', 'error'); }
+}
+
+async function deleteQueue(queueId) {
+    if (!confirm('⚠️ Permanently delete this queue and ALL its tokens?')) return;
+    try {
+        await axios.delete(`${API_URL}/admin/queues/${queueId}`);
+        showToast('Queue deleted!', 'success');
+        loadAdminQueues();
+    } catch (err) { showToast('Delete failed', 'error'); }
+}
+
+async function viewTokens(queueId) {
+    const listDiv = document.getElementById(`tokens-list-${queueId}`);
+    if (!listDiv.classList.contains('hidden')) { listDiv.classList.add('hidden'); return; }
+    try {
+        const res = await axios.get(`${API_URL}/admin/queues/${queueId}/tokens`);
+        listDiv.innerHTML = '<h4>All Tokens</h4>' + (res.data.length === 0 ? '<p>No tokens yet.</p>' :
+            res.data.map(t => `
+            <div class="token-row">
+                <span>Token <strong>#${t.token_number}</strong> — <span style="color:${t.status==='serving'?'green':'grey'}">${t.status.toUpperCase()}</span></span>
+                ${t.status === 'waiting' ? `<button class="btn-action bg-red" style="padding:3px 10px;" onclick="cancelToken(${t.id},${queueId})">Cancel</button>` : ''}
+            </div>`).join(''));
+        listDiv.classList.remove('hidden');
+    } catch (err) { showToast('Failed to load tokens', 'error'); }
+}
+
+async function cancelToken(tokenId, queueId) {
+    if (!confirm("Cancel this patient's token?")) return;
+    try {
+        await axios.post(`${API_URL}/admin/tokens/${tokenId}/cancel`);
+        showToast('Token cancelled', 'success');
+        viewTokens(queueId);
+        loadAdminQueues();
+    } catch (err) { showToast('Cancellation failed', 'error'); }
+}
+
+// ── Transfers ───────────────────────────────────────────────
+async function loadPendingTransfers() {
+    loadTransferHistory();
+    try {
+        const res = await axios.get(`${API_URL}/admin/transfers`);
+        const container = document.getElementById('admin-transfers-container');
+        if (res.data.length === 0) { container.innerHTML = '<div class="empty-state">No pending transfers.</div>'; return; }
+        container.innerHTML = res.data.map(t => `
+            <div class="card" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <div>
+                    <strong>Transfer #${t.id}</strong> — Token ID ${t.token_id}
+                    <div style="color:#666; font-size:0.9em;">From: <strong>${t.from_username}</strong> → To: <strong>${t.to_username}</strong></div>
+                </div>
+                <div class="transfer-actions">
+                    <button class="btn-action bg-green" onclick="handleTransfer(${t.id}, 'approve')">✅ Approve</button>
+                    <button class="btn-action bg-red" onclick="handleTransfer(${t.id}, 'reject')">❌ Reject</button>
+                </div>
+            </div>`).join('');
+    } catch (err) { console.error(err); }
+}
+
+async function loadTransferHistory() {
+    try {
+        const res = await axios.get(`${API_URL}/sharing/history`);
+        const container = document.getElementById('transfer-history-container');
+        if (res.data.length === 0) { container.innerHTML = '<p style="color:#999">No transfer history available.</p>'; return; }
+        
+        container.innerHTML = res.data.map(t => {
+            const dateStr = new Date(t.created_at + 'Z').toLocaleString();
+            let statusColor = '#95a5a6';
+            if (t.status === 'approved') statusColor = '#27ae60';
+            if (t.status === 'rejected') statusColor = '#e74c3c';
+            if (t.status === 'pending') statusColor = '#f39c12';
+            
+            return `
+            <div class="card" style="margin-bottom:12px; border-left: 5px solid ${statusColor}; padding: 16px;">
+                <div style="font-size:0.85em; color:#7f8c8d; margin-bottom:6px;">${dateStr}</div>
+                <div><strong>Token #${t.token_id}</strong> &nbsp;•&nbsp; <span>${t.from_username}</span> ➔ <span>${t.to_username}</span></div>
+                <div style="margin-top:6px; font-weight:800; color:${statusColor}; text-transform:uppercase; font-size:0.9em;">${t.status}</div>
+            </div>`;
+        }).join('');
+    } catch (err) { console.error('Error loading history', err); }
+}
+
+async function handleTransfer(id, action) {
+    try {
+        await axios.post(`${API_URL}/admin/transfers/${id}/${action}`);
+        showToast(`Transfer ${action}d!`, 'success');
+        loadPendingTransfers();
+        loadAdminQueues();
+    } catch (err) { showToast('Action failed', 'error'); }
+}
+
+async function reassignToken() {
+    const queueId = document.getElementById('reassign-queue-id').value;
+    const tokenNumber = document.getElementById('reassign-token-number').value;
+    const username = document.getElementById('reassign-username').value.trim();
+    const role = document.getElementById('reassign-role').value;
+    if (!queueId || !tokenNumber || !username) { showToast('Please fill all fields', 'error'); return; }
+    try {
+        const res = await axios.post(`${API_URL}/admin/queues/${queueId}/tokens/${tokenNumber}/reassign`, { username, role });
+        showToast(res.data.message, 'success');
+        document.getElementById('reassign-username').value = '';
+        document.getElementById('reassign-token-number').value = '';
+        loadAdminQueues();
+    } catch (err) { showToast(err.response?.data?.error || 'Reassign failed', 'error'); }
+}
+
+// ── Toast ───────────────────────────────────────────────────
+function showToast(msg, type='success') {
+    const t = document.createElement('div');
+    t.className = `toast toast-${type}`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.classList.add('show'), 10);
+    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 3500);
+}
+
+// Initial load
+loadAdminQueues();
+</script>
+</body>
+</html>

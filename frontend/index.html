@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Queue System</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Socket.IO and Axios from CDN -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        // Redirect old index.html visitors to the new login page
+        window.location.href = '/login.html';
+    </script>
+</head>
+
+<body>
+    <nav id="navbar" class="hidden">
+        <div class="nav-brand">Smart Queue (<span id="nav-username"></span>)</div>
+        <div class="nav-links">
+            <button id="nav-dashboard-btn" onclick="showPage('dashboard')">Dashboard</button>
+            <button id="nav-mytokens-btn" onclick="showPage('my-tokens')">My Tokens</button>
+            <button id="nav-admin-btn" class="hidden" onclick="showPage('admin')">Admin</button>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div id="app">
+        <!-- Main Content -->
+    <div id="portal-page" class="page active">
+        <div style="text-align: center; margin-top: 50px;">
+            <h2>Select Portal</h2>
+            <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
+                <div class="card" style="cursor: pointer; padding: 40px; text-align: center;" onclick="setPortal('user')">
+                    <h3>👤 User Portal</h3>
+                    <p>Join queues and track your real-time wait</p>
+                </div>
+                <div class="card" style="cursor: pointer; padding: 40px; text-align: center;" onclick="setPortal('admin')">
+                    <h3>🛠️ Admin Portal</h3>
+                    <p>Manage queues and assist customers</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="login-page" class="page hidden">
+        <h2 id="login-title">User Login</h2>
+        <form id="login-form">
+            <input type="text" id="login-user-id" placeholder="Username" required>
+            <input type="password" id="login-password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <p>Don't have an account? <a href="#" onclick="showPage('register')">Register</a></p>
+        <p style="margin-top:20px; font-size: 0.9em;"><a href="#" onclick="showPage('portal')">← Back to Portal Selection</a></p>
+    </div>
+
+    <div id="register-page" class="page hidden">
+        <h2 id="register-title">User Registration</h2>
+        <form id="register-form">
+            <input type="text" id="reg-username" placeholder="Username" required>
+            <input type="password" id="reg-password" placeholder="Password" required>
+            <input type="hidden" id="reg-role" value="user">
+            <button type="submit">Register</button>
+        </form>
+        <p id="reg-result" style="color: green; font-weight: bold; margin-top: 15px;"></p>
+        <p>Already have an account? <a href="#" onclick="showPage('login')">Login</a></p>
+        <p style="margin-top:20px; font-size: 0.9em;"><a href="#" onclick="showPage('portal')">← Back to Portal Selection</a></p>
+    </div>
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" class="page hidden">
+            <h2>Dashboard - Live Queues</h2>
+            <div id="queues-container"></div>
+        </div>
+
+        <!-- My Tokens & Sharing Page -->
+        <div id="my-tokens-page" class="page hidden">
+            <h2>My Tokens</h2>
+            <button onclick="loadMyTokens()">Refresh Tokens</button>
+            <div id="my-tokens-container"></div>
+
+            <hr>
+            <h3>Share Token</h3>
+            <form id="share-token-form">
+                <input type="number" id="share-token-id" placeholder="Token ID (From list above)" required>
+                <input type="text" id="share-user-id" placeholder="To Username" required>
+                <button type="submit">Request Transfer</button>
+            </form>
+
+            <hr>
+            <h3>My Transfers</h3>
+            <button onclick="loadMyTransfers()">Refresh Transfers</button>
+            <div id="my-transfers-container"></div>
+        </div>
+
+        <!-- Admin Page -->
+        <div id="admin-page" class="page hidden">
+            <h2>Admin Panel</h2>
+            <div class="admin-grid">
+                <div>
+                    <h3>Create Queue</h3>
+                    <form id="create-queue-form">
+                        <input type="text" id="new-queue-name" placeholder="Queue Name" required>
+                        <input type="number" id="new-queue-time" placeholder="Avg Time (mins)" value="5" required>
+                        <input type="number" id="new-queue-capacity" placeholder="Total Tokens (e.g. 20)" value="20" required>
+                        <button type="submit">Create Queue</button>
+                    </form>
+                </div>
+                <div>
+                    <h3>Manage Queues</h3>
+                    <button onclick="loadAdminQueues()">Refresh Admin Queues</button>
+                    <div id="admin-queues-container"></div>
+                </div>
+            </div>
+
+            <hr>
+            <h3>Manage Transfers</h3>
+            <button onclick="loadPendingTransfers()">Refresh Transfers</button>
+            <div id="admin-transfers-container"></div>
+        </div>
+    </div>
+
+    <!-- Initialization and utilities -->
+    <script src="js/app.js?v=3"></script>
+    <script src="js/auth.js?v=3"></script>
+    <script src="js/queue.js?v=3"></script>
+    <script src="js/admin.js?v=3"></script>
+</body>
+
+</html>
